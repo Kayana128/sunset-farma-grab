@@ -55,18 +55,52 @@ dlcsv.onclick=()=>{
     const mm=String(now.getMonth()+1).padStart(2,'0');
     const namaFile='Linjong'+dd+mm+'.csv';
 
-    // Gunakan mesin download SheetJS langsung, sama seperti tombol Excel.
-    // Ini menghindari masalah browser saat membuat Blob/data URL sendiri.
-    const csvBook=XLSX.utils.book_new();
+    // CSV harus mempertahankan STRUKTUR TEMPLATE GRAB persis.
+    // Template GRAB memiliki 16 kolom A:P. Jangan membuat sheet baru
+    // dari JSON karena itu dapat mengubah/meringkas struktur kolom.
     const csvSheet=out.Sheets['GRAB'];
     if(!csvSheet) throw new Error('Sheet GRAB tidak ditemukan.');
-    XLSX.utils.book_append_sheet(csvBook,csvSheet,'GRAB');
+    const srcRange=XLSX.utils.decode_range(csvSheet['!ref']||'A1:P1');
+    const lastRow=srcRange.e.r;
+    const firstCol=0; // A
+    const lastCol=15; // P = ITEMSTATUS
 
-    XLSX.writeFile(csvBook,namaFile,{
-      bookType:'csv',
-      type:'binary',
-      compression:false
-    });
+    // Pastikan status selalu mengikuti CURRENTSTOCK, tanpa mengubah header.
+    let curCol=-1,statusCol=-1;
+    for(let c=firstCol;c<=lastCol;c++){
+      const hv=norm(csvSheet[XLSX.utils.encode_cell({r:2,c})]?.v);
+      if(hv==='CURRENTSTOCK') curCol=c;
+      if(hv==='ITEMSTATUS') statusCol=c;
+    }
+    if(curCol<0||statusCol<0) throw new Error('Struktur kolom GRAB tidak sesuai (CURRENTSTOCK/ITEMSTATUS).');
+    for(let r=3;r<=lastRow;r++){
+      const cell=XLSX.utils.encode_cell({r,c:curCol});
+      const stock=num(csvSheet[cell]?.v);
+      csvSheet[XLSX.utils.encode_cell({r,c:statusCol})]={t:'s',v:stock>0?'in stock':'out-of-stock indefinitely'};
+    }
+
+    // Ambil tepat A:P sehingga jumlah kolom setiap baris selalu 16.
+    const rows=[];
+    for(let r=0;r<=lastRow;r++){
+      const row=[];
+      for(let c=firstCol;c<=lastCol;c++){
+        const cell=csvSheet[XLSX.utils.encode_cell({r,c})];
+        row.push(cell?.v==null?'':cell.v);
+      }
+      rows.push(row);
+    }
+    const csvEscape=v=>{
+      const x=String(v??'');
+      return /["\r\n,]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x;
+    };
+    const csvText='\\uFEFF'+rows.map(row=>row.map(csvEscape).join(',')).join('\\r\\n')+'\\r\\n';
+    const blob=new Blob([csvText],{type:'text/csv;charset=utf-8;'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=namaFile;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);
   }catch(e){
     console.error('CSV download error:',e);
     alert('CSV gagal didownload: '+e.message);
