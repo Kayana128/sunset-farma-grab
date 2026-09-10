@@ -45,42 +45,31 @@ out=XLSX.utils.book_new();XLSX.utils.book_append_sheet(out,grab,'GRAB');dl.disab
 }catch(e){go.disabled=false;dl.disabled=true;dlcsv.disabled=true;status.className='status err';status.textContent='Gagal: '+e.message}};
 dl.onclick=()=>{if(!out)return;const base=chosen.replace(/\.(xlsx|xls)$/i,'');XLSX.writeFile(out,base+'_GRAB_SIAP_UPLOAD.xlsx',{bookType:'xlsx',compression:true})};
 dlcsv.onclick=()=>{
-  if(!out){alert('Silakan proses file terlebih dahulu.');return;}
+  if(!out){
+    alert('Silakan proses file terlebih dahulu.');
+    return;
+  }
   try{
     const now=new Date();
     const dd=String(now.getDate()).padStart(2,'0');
     const mm=String(now.getMonth()+1).padStart(2,'0');
     const namaFile='Linjong'+dd+mm+'.csv';
 
-    const ws=out.Sheets['GRAB'];
-    if(!ws) throw new Error('Sheet GRAB tidak ditemukan.');
+    // Gunakan mesin download SheetJS langsung, sama seperti tombol Excel.
+    // Ini menghindari masalah browser saat membuat Blob/data URL sendiri.
+    const csvBook=XLSX.utils.book_new();
+    const csvSheet=out.Sheets['GRAB'];
+    if(!csvSheet) throw new Error('Sheet GRAB tidak ditemukan.');
+    XLSX.utils.book_append_sheet(csvBook,csvSheet,'GRAB');
 
-    const csv=XLSX.utils.sheet_to_csv(ws,{
-      FS:',',
-      RS:'\r\n',
-      blankrows:true,
-      forceQuotes:false
+    XLSX.writeFile(csvBook,namaFile,{
+      bookType:'csv',
+      type:'binary',
+      compression:false
     });
-
-    // Buat BOM UTF-8 sebagai byte asli, bukan teks "\\ufeff".
-    const bom=new Uint8Array([0xEF,0xBB,0xBF]);
-    const blob=new Blob([bom,csv],{type:'text/csv;charset=utf-8'});
-
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url;
-    a.download=namaFile;
-    a.style.display='none';
-    document.body.appendChild(a);
-    a.click();
-
-    setTimeout(()=>{
-      URL.revokeObjectURL(url);
-      a.remove();
-    },2000);
   }catch(e){
-    alert('CSV gagal dibuat: '+e.message);
-    console.error(e);
+    console.error('CSV download error:',e);
+    alert('CSV gagal didownload: '+e.message);
   }
 };
 window.addEventListener('error',function(e){
