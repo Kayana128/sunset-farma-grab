@@ -39,26 +39,38 @@ if(dFormula){
 // STOCK UPLOAD mengikuti =INT(D[row])
 s=Math.trunc(s);codeToStock.set(String(code),s);rumusCount++}
 const grab=wb.Sheets['GRAB'];const gr=XLSX.utils.decode_range(grab['!ref']);let cur=-1,max=-1,itemId=-1;for(let c=gr.s.c;c<=gr.e.c;c++){const v=norm(grab[XLSX.utils.encode_cell({r:2,c})]?.v);if(v==='ITEMID')itemId=c;if(v==='CURRENTSTOCK')cur=c;if(v==='MAXSTOCK')max=c}if(itemId<0||cur<0||max<0)throw Error('Struktur sheet GRAB template tidak sesuai.');
-let statusCol=-1;for(let c=gr.s.c;c<=gr.e.c;c++){const v=norm(grab[XLSX.utils.encode_cell({r:2,c})]?.v);if(v==='ITEMSTATUS')statusCol=c}let changed=0,matched=0;for(let r=3;r<=gr.e.r;r++){const id=grab[XLSX.utils.encode_cell({r,c:itemId})]?.v;if(id==null||String(id).trim()==='')continue;const s=codeToStock.get(String(id))??0;grab[XLSX.utils.encode_cell({r,c:cur})]={t:'n',v:s};if(s===0){grab[XLSX.utils.encode_cell({r,c:max})]={t:'s',v:''};if(statusCol>=0)grab[XLSX.utils.encode_cell({r:r,c:statusCol})]={t:'s',v:'out-of-stock indefinitely'};changed++}else{grab[XLSX.utils.encode_cell({r,c:max})]={t:'n',v:s};if(statusCol>=0)grab[XLSX.utils.encode_cell({r:r,c:statusCol})]={t:'s',v:'in stock'};matched}}
+let changed=0,matched=0;for(let r=3;r<=gr.e.r;r++){const id=grab[XLSX.utils.encode_cell({r,c:itemId})]?.v;if(id==null||String(id).trim()==='')continue;const s=codeToStock.get(String(id))??0;grab[XLSX.utils.encode_cell({r,c:cur})]={t:'n',v:s};if(s===0){grab[XLSX.utils.encode_cell({r,c:max})]={t:'s',v:''};changed++}else{grab[XLSX.utils.encode_cell({r,c:max})]={t:'n',v:s};matched++}}
 // Force final GRAB output only; values, not formulas.
 out=XLSX.utils.book_new();XLSX.utils.book_append_sheet(out,grab,'GRAB');dl.disabled=false;dlcsv.disabled=false;go.disabled=false;status.className='status ok';status.textContent='Selesai.\nBarang pada laporan dibaca: '+stockMap.size+'\nItem pada template RUMUS STOCK: '+rumusCount+'\nItem yang tidak ditemukan di laporan → stok 0: '+missing+'\nGRAB: Max Stock dikosongkan untuk '+changed+' item stok 0.\n\nKlik Download File GRAB untuk Excel atau Download CSV GRAB untuk format CSV.';
 }catch(e){go.disabled=false;dl.disabled=true;dlcsv.disabled=true;status.className='status err';status.textContent='Gagal: '+e.message}};
 dl.onclick=()=>{if(!out)return;const base=chosen.replace(/\.(xlsx|xls)$/i,'');XLSX.writeFile(out,base+'_GRAB_SIAP_UPLOAD.xlsx',{bookType:'xlsx',compression:true})};
 dlcsv.onclick=()=>{
-  if(!out){alert('Silakan proses file terlebih dahulu.');return;}
+  if(!out){
+    alert('Silakan proses file terlebih dahulu.');
+    return;
+  }
   try{
     const now=new Date();
     const dd=String(now.getDate()).padStart(2,'0');
     const mm=String(now.getMonth()+1).padStart(2,'0');
     const namaFile='Linjong'+dd+mm+'.csv';
-    const csv=XLSX.utils.sheet_to_csv(out.Sheets['GRAB'],{FS:',',RS:'\r\n',blankrows:true});
-    const blob=new Blob([new Uint8Array([0xEF,0xBB,0xBF]),csv],{type:'text/csv;charset=utf-8'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url;a.download=namaFile;a.style.display='none';
-    document.body.appendChild(a);a.click();
-    setTimeout(()=>{URL.revokeObjectURL(url);a.remove()},1500);
-  }catch(e){console.error(e);alert('CSV gagal didownload: '+e.message);}
+
+    // Gunakan mesin download SheetJS langsung, sama seperti tombol Excel.
+    // Ini menghindari masalah browser saat membuat Blob/data URL sendiri.
+    const csvBook=XLSX.utils.book_new();
+    const csvSheet=out.Sheets['GRAB'];
+    if(!csvSheet) throw new Error('Sheet GRAB tidak ditemukan.');
+    XLSX.utils.book_append_sheet(csvBook,csvSheet,'GRAB');
+
+    XLSX.writeFile(csvBook,namaFile,{
+      bookType:'csv',
+      type:'binary',
+      compression:false
+    });
+  }catch(e){
+    console.error('CSV download error:',e);
+    alert('CSV gagal didownload: '+e.message);
+  }
 };
 window.addEventListener('error',function(e){
   console.error('GRAB Stock Converter error:',e.error||e.message);
