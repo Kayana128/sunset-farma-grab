@@ -79,13 +79,24 @@ dlcsv.onclick=()=>{
       csvSheet[XLSX.utils.encode_cell({r,c:statusCol})]={t:'s',v:stock>0?'in stock':'out-of-stock indefinitely'};
     }
 
+    // CSV WAJIB berisi NILAI SAJA — tidak boleh ada formula Excel.
     // Ambil tepat A:P sehingga jumlah kolom setiap baris selalu 16.
+    // Jika sebuah cell masih memiliki properti .f (formula), hanya nilai hasil
+    // perhitungannya (.v) yang ditulis. Formula tidak pernah ditulis ke CSV.
+    const valueOnly=(cell)=>{
+      if(!cell) return '';
+      let v=cell.v;
+      if(v==null) return '';
+      // Pengaman tambahan: jangan pernah membiarkan teks formula Excel masuk CSV.
+      if(typeof v==='string' && /^\s*=/.test(v)) return '';
+      return v;
+    };
     const rows=[];
     for(let r=0;r<=lastRow;r++){
       const row=[];
       for(let c=firstCol;c<=lastCol;c++){
         const cell=csvSheet[XLSX.utils.encode_cell({r,c})];
-        row.push(cell?.v==null?'':cell.v);
+        row.push(valueOnly(cell));
       }
       rows.push(row);
     }
